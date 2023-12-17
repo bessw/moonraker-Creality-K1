@@ -919,11 +919,150 @@ class KiriMoto(BaseSlicer):
             r"; firstLayerBedTemp = (%F)", self.header_data
         )
 
+class Creality(BaseSlicer):
+    def check_identity(self, data: str) -> Optional[Dict[str, str]]:
+        aliases = {
+            'Creative3D': r"Creative3D",
+            'Creality': r"Creality"
+        }
+        pattern = r'Version : V([\d\.]+)'
+        match_version = re.search(pattern, data)
+        slicer_version = match_version.group(1) if match_version else "1.0"
+        for name, expr in aliases.items():
+            match = re.search(expr, data)
+            # ;Creality Print Version : V4.3.7.6456
+            if match:
+                return {
+                    'slicer': name,
+                    'slicer_version': slicer_version
+                }
+        return None
+
+    def parse_first_layer_height(self) -> Optional[float]:
+        return _regex_find_first(
+            r";MINZ:(\d+\.?\d*)", self.footer_data)
+
+
+    def parse_layer_height(self) -> Optional[float]:
+        pattern = r";Layer\sheight:\s(\d+\.?\d*)"
+        self.layer_height = _regex_find_first(
+            pattern, self.footer_data)
+        return self.layer_height
+
+    def parse_object_height(self) -> Optional[float]:
+        matches = re.findall(
+            r";MAXZ:(\d+\.?\d*)", self.footer_data)
+        if matches:
+            try:
+                matches = [float(m) for m in matches]
+            except Exception:
+                pass
+            else:
+                return max(matches)
+        return self._parse_max_float(r"G1\sZ\d+\.\d*\sF", self.footer_data)
+
+    def parse_layer_count(self) -> Optional[int]:
+        return _regex_find_int(
+            r";LAYER_COUNT\:(\d+)", self.header_data)
+
+    def parse_filament_type(self) -> Optional[str]:
+        return _regex_find_string(
+            r";Material Type:(\S+)", self.header_data)
+    
+    def parse_filament_name(self) -> Optional[str]:
+        return _regex_find_string(
+            r";Material Name:(.+)", self.header_data)
+
+    def parse_filament_total(self) -> Optional[float]:
+        filament_total = _regex_find_first(
+            r";Filament used:(\d+\.?\d*)m", self.footer_data)
+        filament_total = filament_total * 1000
+        return filament_total
+
+    def parse_filament_weight_total(self) -> Optional[float]:
+        filament_total = _regex_find_first(
+            r";Filament used:(\d+\.?\d*)m", self.footer_data)
+        filament_weight_total = filament_total * 5.88
+        return filament_weight_total
+
+    def parse_estimated_time(self) -> Optional[float]:
+        total_time = _regex_find_first(
+            r";TIME:(\d+)", self.footer_data)
+        return total_time
+
+    def parse_thumbnails(self) -> Optional[List[Dict[str, Any]]]:
+        # ; png begin 96*96 8532 1 113 288
+        try:
+            thumb_matches = []
+            rets = []
+            infos = {"1": [32, 32], "2": [300, 300]}
+            for data in [self.header_data, self.footer_data]:
+                rets = re.findall("; png begin(.*)", data)
+                if rets and len(rets) > 1:
+                    if "*" in rets[0]:
+                        infos["1"] = [rets[0].split(" ")[1].split("*")[0], rets[0].split(" ")[1].split("*")[1]]
+                        infos["2"] = [rets[1].split(" ")[1].split("*")[0], rets[1].split(" ")[1].split("*")[1]]
+                    rets[0] = rets[0].replace("*", "\*")
+                    rets[1] = rets[1].replace("*", "\*")
+                    thumb_matches += re.findall("; png begin%s([\s\S]*?); png end" % rets[0], data)
+                    thumb_matches += re.findall("; png begin%s([\s\S]*); png end" % rets[1], data)
+                elif len(rets) == 1:
+                    if "*" in rets[0]:
+                        infos["1"] = [rets[0].split(" ")[1].split("*")[0], rets[0].split(" ")[1].split("*")[1]]
+                    rets[0] = rets[0].replace("*", "\*")
+                    thumb_matches += re.findall("; png begin%s([\s\S]*); png end" % rets[0], data)
+                if thumb_matches:
+                    break
+            else:
+                return None
+            thumb_dir = os.path.join(os.path.dirname(self.path), ".thumbs")
+            if not os.path.exists(thumb_dir):
+                try:
+                    os.mkdir(thumb_dir)
+                except Exception:
+                    log_to_stderr(f"Unable to create thumb dir: {thumb_dir}")
+                    return None
+            thumb_base = os.path.splitext(os.path.basename(self.path))[0]
+            parsed_matches: List[Dict[str, Any]] = []
+            count = 1
+            for match in thumb_matches:
+                lines = re.split(r"\r?\n", match.replace('; ', ''))
+                info = infos.get(str(count))
+                count += 1
+                if count == 3:
+                    break
+                data = "".join(lines[1:-1])
+                thumb_name = f"{thumb_base}-{info[0]}x{info[1]}.png"
+                thumb_path = os.path.join(thumb_dir, thumb_name)
+                rel_thumb_path = os.path.join(".thumbs", thumb_name)
+                with open(thumb_path, "wb") as f:
+                    f.write(base64.b64decode(data.encode()))
+                    f.flush()
+                parsed_matches.append({
+                    'width': info[0], 'height': info[1],
+                    'size': os.path.getsize(thumb_path),
+                    'relative_path': rel_thumb_path})
+        except Exception as err:
+            log_to_stderr(f"Creality(BaseSlicer) parse_thumbnails err: {err}")
+            parsed_matches: List[Dict[str, Any]] = []
+        return parsed_matches
+
+
+    def parse_first_layer_extr_temp(self) -> Optional[float]:
+        # return _regex_find_first(
+        #     r"; first_layer_temperature = (\d+\.?\d*)", self.footer_data)
+        return _regex_find_first(
+            r";Print Temperature:(\d+\.?\d*)", self.footer_data)
+
+    def parse_first_layer_bed_temp(self) -> Optional[float]:
+        return _regex_find_first(
+            r";Bed Temperature:(\d+\.?\d*)", self.footer_data)
+
 
 READ_SIZE = 1024 * 1024  # 1 MiB
 SUPPORTED_SLICERS: List[Type[BaseSlicer]] = [
     PrusaSlicer, Slic3rPE, Slic3r, Cura, Simplify3D,
-    KISSlicer, IdeaMaker, IceSL, KiriMoto
+    KISSlicer, IdeaMaker, IceSL, KiriMoto, Creality
 ]
 SUPPORTED_DATA = [
     'gcode_start_byte',
@@ -1005,11 +1144,17 @@ def get_slicer(file_path: str) -> Tuple[BaseSlicer, Dict[str, str]]:
             slicer = UnknownSlicer(file_path)
             ident = slicer.check_identity(header_data)
         if size > READ_SIZE * 2:
-            f.seek(size - READ_SIZE)
-            footer_data = f.read()
+            if type(slicer) == Creality:
+                footer_data = header_data
+            else:
+                f.seek(size - READ_SIZE)
+                footer_data = f.read()
         elif size > READ_SIZE:
-            remaining = size - READ_SIZE
-            footer_data = header_data[remaining - READ_SIZE:] + f.read()
+            if type(slicer) == Creality:
+                footer_data = header_data
+            else:
+                remaining = size - READ_SIZE
+                footer_data = header_data[remaining - READ_SIZE:] + f.read()
         else:
             footer_data = header_data
         slicer.set_data(header_data, footer_data, size)
