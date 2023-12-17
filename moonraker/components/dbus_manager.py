@@ -67,7 +67,7 @@ class DbusManager:
                 "/org/freedesktop/PolicyKit1/Authority",
                 "org.freedesktop.PolicyKit1.Authority")
         except self.DbusError:
-            self.server.add_warning(
+            logging.warn(
                 "Unable to find DBus PolKit Interface, this suggests PolKit "
                 "is not installed on your OS.")
 
