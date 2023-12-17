@@ -941,6 +941,8 @@ class BaseProvider:
                 "'halt' or 'poweroff'"
             )
         self.available_services: Dict[str, Dict[str, str]] = {}
+        self.available_services.update({"klipper": {'active_state': "unknown"}})
+        self.available_services.update({"klipper_mcu": {'active_state': "unknown"}})
         self.shell_cmd: SCMDComp = self.server.load_component(
             config, 'shell_command')
 
