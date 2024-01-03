@@ -308,6 +308,7 @@ class PrusaSlicer(BaseSlicer):
         aliases = {
             'PrusaSlicer': r"PrusaSlicer\s(.*)\son",
             'SuperSlicer': r"SuperSlicer\s(.*)\son",
+            'GalaxySlicer': r"GalaxySlicer\s(.*)\son",
             'OrcaSlicer': r"OrcaSlicer\s(.*)\son",
             'MomentSlicer': r"MomentSlicer\s(.*)\son",
             'SliCR-3D': r"SliCR-3D\s(.*)\son",
