@@ -31,11 +31,13 @@ The format is based on [Keep a Changelog].
   should use the new endpoint, however it may be desirable to also
   support the deprecated `full` and `client` endpoints for compatibility
   with older API versions.
+- **simplyprint**: Improve job progress calculation.
 - **build**: Bump PDM-Backend to 2.4.3.
 - **build**: Bump Apprise to 1.9.2
-- **build**: Bump Tornado to 6.4.2
+- **build**: Bump Tornado to 6.5.1
 - **build**: Bump Streaming-form-data to 1.19.1
 - **build**: Bump Jinja2 to 3.1.5
+- **build**: Bump dbus-fast to 2.44.1
 
 ### Fixed
 - **python_deploy**: fix "dev" channel updates for GitHub sources.
@@ -43,6 +45,12 @@ The format is based on [Keep a Changelog].
 - **mqtt**: Publish the result of the Klipper status subscription request.
   This fixes issues with MQTT clients missing the initial status updates
   after Klippy restarts.
+- **eventloop**:  Fixed a condition where the garbage collector may
+  prematurely cancel background tasks.
+- **spoolman**: Use the default websocket ping timeout.  Disable pinging for
+  versions of Tornado prior to 6.5.0.
+- **application**: Disable pinging for versions of Tornado prior to 6.5.0.
+
 
 ### Added
 - **application**: Verify that a filename is present when parsing the
@@ -63,9 +71,18 @@ The format is based on [Keep a Changelog].
 - **python_deploy**: Add support for updating python packages with
   "extras" installed.
 - **update_manager**:  Add support for updating `executable` binaries.
+- **update_manager**:  Added a `report_anomalies` option for git, web, and zip
+  types.
 - **analysis**: Initial support for gcode file time analysis using
   [Klipper Estimator](https://github.com/Annex-Engineering/klipper_estimator).
-
+- **power**: Added the ability to discard unwanted responses for MQTT
+  power devices.
+- **power**: Added `poll_interval` option for HTTP (and all derivatives),
+  TPLink Smartplug, and uhubctl devices.  When set Moonraker will poll device
+  status.
+- **power**: Added `restrict_action_processing` option.  When set to `False`,
+  post toggle actions such as restarting Klippy and controlling bound services
+  are run when an external power event is detected.
 
 ## [0.9.3] - 2024-09-05
 

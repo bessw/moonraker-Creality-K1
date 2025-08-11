@@ -151,7 +151,7 @@ class GitDeploy(AppDeploy):
 
     def get_update_status(self) -> Dict[str, Any]:
         status = super().get_update_status()
-        status.update(self.repo.get_repo_status())
+        status.update(self.repo.get_repo_status(self.report_anomalies))
         status["name"] = self.name
         return status
 
@@ -454,9 +454,16 @@ class GitRepo:
             eventloop = self.server.get_event_loop()
             data = await eventloop.run_in_thread(self.git_folder_path.read_text)
             ident, _, gitdir = data.partition(":")
-            if ident.strip() != "gitdir" or not gitdir.strip():
+            gitdir = gitdir.strip()
+            if ident.strip() != "gitdir" or not gitdir:
+                logging.warning(f"not a .git file: '{ident}' '{gitdir}' in '{data}'")
                 return False
-            self.git_folder_path = pathlib.Path(gitdir).expanduser().resolve()
+            gitdir_path = pathlib.Path(gitdir).expanduser()
+            resolved_path = (self.git_folder_path.parent / gitdir_path).resolve()
+            logging.info(
+                f"detecting git folder path '{self.git_folder_path}'"
+                f" leads to '{gitdir}' resolves to '{resolved_path}'")
+            self.git_folder_path = resolved_path
         if self.git_folder_path.is_dir():
             self.is_shallow = self.git_folder_path.joinpath("shallow").is_file()
             return True
@@ -720,7 +727,7 @@ class GitRepo:
             self.repo_anomalies.append(f"Unofficial remote url: {self.upstream_url}")
         if self.git_branch != self.primary_branch or self.git_remote != "origin":
             self.repo_anomalies.append(
-                "Repo not on offical remote/branch, expected: "
+                "Repo not on official remote/branch, expected: "
                 f"origin/{self.primary_branch}, detected: "
                 f"{self.git_remote}/{self.git_branch}")
         if self.untracked_files:
@@ -737,7 +744,7 @@ class GitRepo:
                 self.repo_warnings.append(msg)
         if self.is_dirty():
             self.repo_warnings.append(
-                "Repo is dirty.  Detected the following modifed files: "
+                "Repo is dirty.  Detected the following modified files: "
                 f"{self.modified_files}"
             )
         self._generate_warn_msg()
@@ -893,7 +900,7 @@ class GitRepo:
         reset_commit: Optional[str] = None
         async with self.git_operation_lock:
             if branch is None:
-                # No branch is specifed so we are checking out detached
+                # No branch is specified so we are checking out detached
                 if self.channel != Channel.DEV or self.pinned_commit is not None:
                     reset_commit = self.upstream_commit
                 branch = f"{self.git_remote}/{self.git_branch}"
@@ -1019,8 +1026,9 @@ class GitRepo:
             # Return tagged commits as SHA keys mapped to tag values
             return tagged_commits
 
-    def get_repo_status(self) -> Dict[str, Any]:
+    def get_repo_status(self, rpt_anomalies: bool) -> Dict[str, Any]:
         no_untrk_src = len(self.untracked_files) == 0
+        anomalies = self.repo_anomalies if rpt_anomalies else []
         return {
             'detected_type': "git_repo",
             'remote_alias': self.git_remote,
@@ -1043,7 +1051,7 @@ class GitRepo:
             'pristine': no_untrk_src and not self.current_version.dirty,
             'corrupt': self.repo_corrupt,
             'warnings': self.repo_warnings,
-            'anomalies': self.repo_anomalies
+            'anomalies': anomalies
         }
 
     def get_version(self, upstream: bool = False) -> GitVersion:
@@ -1218,7 +1226,7 @@ class GitRepo:
                     fix_loose = False
                     attempts = 2
                 else:
-                    # since the attept to repair failed, bypass attempts
+                    # since the attempt to repair failed, bypass attempts
                     # and immediately raise an exception
                     raise self.server.error(
                         "Unable to repair loose objects, use hard recovery"
